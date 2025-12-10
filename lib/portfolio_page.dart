@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:intl/intl.dart';
+import 'pay_to_friend_page.dart';
 import 'scan.dart';
 import 'profile.dart';
-import 'payment_page.dart';
-import 'fingerprint_auth_page.dart'; 
+import 'pay_to_shop_page.dart';
 import 'recive_page.dart';
-import 'add_funds.dart'; // <-- Make sure this page exists!
+import 'add_funds.dart';
 
 final FlutterSecureStorage secureStorage = const FlutterSecureStorage();
 
@@ -19,13 +20,11 @@ class PortfolioPage extends StatefulWidget {
 class _PortfolioPageState extends State<PortfolioPage> {
   String? connectedIp;
   String username = '';
-  double balance = 7630.0; // Start balance, update as needed
+  double balance = 0.0;
 
-  final List<Map<String, dynamic>> transactions = [
-    {'name': 'JoeMoe Coffee', 'method': 'Visa **** 2192', 'amount': '\$50.21', 'type': 'send'},
-    {'name': 'Starbucks', 'method': 'Visa **** 2192', 'amount': '\$32.50', 'type': 'receive'},
-    {'name': 'Amazon', 'method': 'Visa **** 2192', 'amount': '\$125.99', 'type': 'send'},
-  ];
+  final List<Map<String, dynamic>> transactions = [];
+
+  final currencyFormatter = NumberFormat.currency(locale: "en_IN", symbol: "₹");
 
   @override
   void initState() {
@@ -36,80 +35,156 @@ class _PortfolioPageState extends State<PortfolioPage> {
   Future<void> _loadUsername() async {
     final storedUsername = await secureStorage.read(key: 'user_username');
     if (storedUsername != null && storedUsername.isNotEmpty) {
-      setState(() {
-        username = storedUsername;
-      });
+      setState(() => username = storedUsername);
     }
   }
 
-  // --- Add Funds Navigation ---
+  bool _validateIp(String ip) {
+    final parts = ip.split('.');
+    if (parts.length != 4) return false;
+    for (var p in parts) {
+      final n = int.tryParse(p);
+      if (n == null || n < 0 || n > 255) return false;
+    }
+    return true;
+  }
+
+  // ------------------------------------------------------------
+  // ADD FUNDS
+  // ------------------------------------------------------------
   Future<void> _navigateToAddFunds() async {
     final added = await Navigator.push<double>(
       context,
       MaterialPageRoute(builder: (context) => const AddFundsPage()),
     );
+
     if (added != null && added > 0) {
       setState(() {
         balance += added;
         transactions.insert(0, {
           'name': 'Funds Added',
-          'method': 'Balance top-up',
-          'amount': '\₹${added.toStringAsFixed(2)}',
+          'method': 'Wallet Top-up',
+          'amount': added,
           'type': 'receive',
         });
       });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("₹${added.toStringAsFixed(2)} added to wallet!"),
+          backgroundColor: Colors.green,
+        ),
+      );
     }
   }
 
-  void _showEditIpDialog() {
-    final a = TextEditingController();
-    final b = TextEditingController();
-    final c = TextEditingController();
-    final d = TextEditingController();
-    showDialog(
+  // ------------------------------------------------------------
+  // SEND BOTTOM SHEET
+  // ------------------------------------------------------------
+  void _showSendOptions() {
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Enter IP Address"),
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _ipBox(a),
-            const Text('.'),
-            _ipBox(b),
-            const Text('.'),
-            _ipBox(c),
-            const Text('.'),
-            _ipBox(d),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              setState(() => connectedIp = "${a.text}.${b.text}.${c.text}.${d.text}");
-              Navigator.of(context).pop();
-            },
-            child: const Text("Save"),
-          ),
-        ],
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text("Choose Payment Type",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+
+              // Pay To Friend
+              ListTile(
+                leading: const Icon(Icons.person, color: Colors.blue),
+                title: const Text("Pay to Friend", style: TextStyle(fontSize: 18)),
+                onTap: () async {
+                  Navigator.pop(context);
+
+                  final sentAmount = await Navigator.push<double>(
+                    context,
+                    MaterialPageRoute(builder: (_) => PayToFriendPage(ipAddress: connectedIp!,senderUsername: username,)),
+                  );
+
+                  if (sentAmount != null && sentAmount > 0) {
+                    setState(() {
+                      balance -= sentAmount;
+                      transactions.insert(0, {
+                        'name': 'Sent to Friend',
+                        'method': 'Hotspot Transfer',
+                        'amount': sentAmount,
+                        'type': 'send',
+                      });
+                    });
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text("₹$sentAmount sent successfully"),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                },
+              ),
+
+              const Divider(),
+
+              // Pay to Shop
+              ListTile(
+                leading: const Icon(Icons.storefront, color: Colors.green),
+                title: const Text("Pay to Shop", style: TextStyle(fontSize: 18)),
+                onTap: () async {
+                  Navigator.pop(context);
+
+                  final sentAmount = await Navigator.push<double>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PayToShopPage(
+                        ipAddress: connectedIp!,
+                        senderUsername: username,
+                      ),
+                    ),
+                  );
+
+                  if (sentAmount != null && sentAmount > 0) {
+                    setState(() {
+                      balance -= sentAmount;
+                      transactions.insert(0, {
+                        'name': 'Shop Payment',
+                        'method': 'Hotspot Transfer',
+                        'amount': sentAmount,
+                        'type': 'send',
+                      });
+                    });
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text("₹$sentAmount paid to shop!"),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _ipBox(TextEditingController controller) {
-    return SizedBox(
-      width: 35,
-      child: TextField(
-        controller: controller,
-        maxLength: 3,
-        keyboardType: TextInputType.number,
-        decoration: const InputDecoration(counterText: ''),
-      ),
-    );
-  }
+  // ------------------------------------------------------------
+  // UI START
+  // ------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
     final isConnected = connectedIp != null;
+
     return Scaffold(
       backgroundColor: const Color(0xFF6B66E8),
       body: SafeArea(
@@ -132,57 +207,43 @@ class _PortfolioPageState extends State<PortfolioPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Top bar (Dashboard & Controls)
+                  // ---------------- Top Bar ----------------
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
                       Row(
                         children: [
+                          // QR SCAN
                           GestureDetector(
                             onTap: () async {
                               final ip = await Navigator.push(
                                 context,
                                 MaterialPageRoute(builder: (_) => const QrScanPage()),
                               );
-                              if (ip != null && ip is String && ip.isNotEmpty) {
+
+                              if (ip != null && ip is String && _validateIp(ip)) {
                                 setState(() => connectedIp = ip);
                               }
                             },
-                            child: Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.grey.withOpacity(.09),
-                                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
-                              ),
-                              padding: const EdgeInsets.all(9),
-                              child: Icon(
-                                Icons.qr_code_scanner,
-                                color: isConnected ? Colors.green : Colors.red,
-                                size: 26,
-                              ),
-                            ),
+                            child: _circleButton(Icons.qr_code_scanner,
+                                isConnected ? Colors.green : Colors.red),
                           ),
                           const SizedBox(width: 9),
+
+                          // EDIT IP
                           GestureDetector(
                             onTap: _showEditIpDialog,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.grey.withOpacity(.09),
-                                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
-                              ),
-                              padding: const EdgeInsets.all(9),
-                              child: Icon(
-                                Icons.edit_rounded,
-                                color: isConnected ? Colors.green : Colors.red,
-                                size: 20,
-                              ),
-                            ),
+                            child: _circleButton(Icons.edit_rounded,
+                                isConnected ? Colors.green : Colors.red),
                           ),
-                          const SizedBox(width: 11),
+
+                          const SizedBox(width: 12),
+
+                          // IP STATUS
                           Row(
                             children: [
-                              Icon(Icons.circle, size: 12, color: isConnected ? Colors.green : Colors.red),
+                              Icon(Icons.circle,
+                                  size: 12, color: isConnected ? Colors.green : Colors.red),
                               const SizedBox(width: 7),
                               Text(
                                 isConnected ? connectedIp! : "Scan QR",
@@ -194,10 +255,16 @@ class _PortfolioPageState extends State<PortfolioPage> {
                               ),
                             ],
                           ),
+
                           const SizedBox(width: 12),
+
+                          // ⭐ PROFILE ICON ADDED HERE
                           GestureDetector(
                             onTap: () {
-                              Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage()));
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const ProfilePage()),
+                              );
                             },
                             child: Container(
                               decoration: const BoxDecoration(
@@ -205,241 +272,36 @@ class _PortfolioPageState extends State<PortfolioPage> {
                                 color: Color(0xFFEDEAFF),
                               ),
                               padding: const EdgeInsets.all(8),
-                              child: const Icon(Icons.person, color: Color(0xFF7B67E9), size: 26),
+                              child: const Icon(Icons.person,
+                                  color: Color(0xFF7B67E9), size: 26),
                             ),
                           ),
                         ],
                       ),
                     ],
                   ),
+
                   const SizedBox(height: 19),
-                  // Username heading as portfolio title
+
+                  // ---------------- Username ----------------
                   Text(
                     username.isEmpty ? "My Portfolio" : "$username's Portfolio",
                     style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 30,
-                      color: Color(0xFF202233),
-                    ),
+                        fontWeight: FontWeight.bold, fontSize: 30, color: Color(0xFF202233)),
                   ),
+
                   const SizedBox(height: 19),
-                  // Balance card with add
-                  Stack(
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.fromLTRB(30, 24, 58, 35),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF667eea), Color(0xFF764ba2)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(23),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              "Balance",
-                              style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              "\₹${balance.toStringAsFixed(2)}",
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 38),
-                            ),
-                            const SizedBox(height: 11),
-                            const Text("**** 8149", style: TextStyle(color: Colors.white, fontSize: 16, letterSpacing: 6)),
-                          ],
-                        ),
-                      ),
-                      const Positioned(
-                        top: 22,
-                        right: 23,
-                        child: Icon(Icons.credit_card, size: 32, color: Colors.white60),
-                      ),
-                      // --- Change: "+" button opens AddFundsPage! ---
-                      Positioned(
-                        right: 18,
-                        bottom: 13,
-                        child: GestureDetector(
-                          onTap: _navigateToAddFunds,
-                          child: Container(
-                            width: 46,
-                            height: 46,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF7C5DF9),
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3)),
-                              ],
-                            ),
-                            child: const Icon(Icons.add, color: Colors.white, size: 30),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+
+                  // ---------------- Balance Card ----------------
+                  _balanceCard(),
+
                   const SizedBox(height: 28),
-                 Row(
-  children: [
-    Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 9),
-        height: 87,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 13,
-            ),
-          ],
-        ),
-        child: InkWell(
-          onTap: () {
-            if (connectedIp != null) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => PaymentPage(ipAddress: connectedIp!),
-                ),
-              );
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Please connect to hotspot before sending!',
-                    textAlign: TextAlign.center,
-                  ),
-                  backgroundColor: Colors.red,
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            }
-          },
-          borderRadius: BorderRadius.circular(22),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.18),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                padding: const EdgeInsets.all(13),
-                child: const Icon(Icons.arrow_upward_rounded,
-                    color: Colors.green, size: 28),
-              ),
-              const SizedBox(height: 7),
-              const Text('Send',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-            ],
-          ),
-        ),
-      ),
-    ),
-    Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 9),
-        height: 87,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 13,
-            ),
-          ],
-        ),
-        child: InkWell(
-          onTap: () {
-            if (connectedIp != null && username.isNotEmpty) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) =>
-                        ReceivePaymentPage(ipAddress: connectedIp!, username: username)),
-              );
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Please connect to hotspot before sending!',
-                    textAlign: TextAlign.center,
-                  ),
-                  backgroundColor: Colors.red,
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            }
-          },
-          borderRadius: BorderRadius.circular(22),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.18),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                padding: const EdgeInsets.all(13),
-                child: const Icon(Icons.arrow_downward_rounded,
-                    color: Colors.red, size: 28),
-              ),
-              const SizedBox(height: 7),
-              const Text('Receive',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-            ],
-          ),
-        ),
-      ),
-    ),
-  ],
-),
-const SizedBox(height: 28),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 18),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF7F8FA),
-                      borderRadius: BorderRadius.circular(23),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          username.isEmpty ? "Transaction History" : "$username's Transaction History",
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 21,
-                            color: Color(0xFF202233),
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        const Text(
-                          "A list of historical transactions",
-                          style: TextStyle(color: Color(0xFF8D8EA2), fontSize: 13),
-                        ),
-                        const SizedBox(height: 16),
-                        for (var txn in transactions)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 11),
-                            child: _txnItem(
-                              txn['name'] as String,
-                              txn['method'] as String,
-                              txn['amount'] as String,
-                              txn['type'] as String,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
+
+                  _sendReceiveButtons(),
+
+                  const SizedBox(height: 28),
+
+                  _transactionList(),
                 ],
               ),
             ),
@@ -449,62 +311,314 @@ const SizedBox(height: 28),
     );
   }
 
-  Widget _txnItem(String name, String method, String amount, String type) {
-    final bool isSend = type == 'send';
+  // -------- SMALL HELPERS -------------------------------------
+
+  Widget _circleButton(IconData icon, Color color) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 2),
-      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.grey.withOpacity(.09),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
+      ),
+      padding: const EdgeInsets.all(9),
+      child: Icon(icon, color: color, size: 26),
+    );
+  }
+
+  // ⭐ BALANCE CARD WITH + BUTTON ⭐
+  Widget _balanceCard() {
+    return Stack(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(30, 24, 58, 35),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF667eea), Color(0xFF764ba2)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(23),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Balance", style: TextStyle(color: Colors.white70, fontSize: 16)),
+              const SizedBox(height: 10),
+              Text(
+                currencyFormatter.format(balance),
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold, fontSize: 38),
+              ),
+              const SizedBox(height: 11),
+              const Text("**** 8149",
+                  style: TextStyle(color: Colors.white, fontSize: 16, letterSpacing: 6)),
+            ],
+          ),
+        ),
+
+        // ⭐ Floating + Button for Add Funds
+        Positioned(
+          right: 18,
+          bottom: 13,
+          child: GestureDetector(
+            onTap: _navigateToAddFunds,
+            child: Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: const Color(0xFF7C5DF9),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3)),
+                ],
+              ),
+              child: const Icon(Icons.add, color: Colors.white, size: 30),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------- SEND / RECEIVE BUTTONS ----------------------
+
+  Widget _sendReceiveButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: _actionBox(
+            color: Colors.green,
+            icon: Icons.arrow_upward_rounded,
+            label: "Send",
+            onTap: () {
+              if (connectedIp != null) {
+                _showSendOptions();
+              } else {
+                _showError("Please connect first!");
+              }
+            },
+          ),
+        ),
+        Expanded(
+          child: _actionBox(
+            color: Colors.red,
+            icon: Icons.arrow_downward_rounded,
+            label: "Receive",
+            onTap: () async {
+              if (connectedIp != null && username.isNotEmpty) {
+                final receivedAmount = await Navigator.push<double>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        ReceivePaymentPage(ipAddress: connectedIp!, username: username),
+                  ),
+                );
+
+                if (receivedAmount != null && receivedAmount > 0) {
+                  setState(() {
+                    balance += receivedAmount;
+                    transactions.insert(0, {
+                      'name': 'Payment Received',
+                      'method': 'Hotspot',
+                      'amount': receivedAmount,
+                      'type': 'receive'
+                    });
+                  });
+
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text("₹$receivedAmount received!"),
+                    backgroundColor: Colors.green,
+                  ));
+                }
+              } else {
+                _showError("Connect first!");
+              }
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ------------------------------------------------------------
+
+  void _showError(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), backgroundColor: Colors.red),
+    );
+  }
+
+  Widget _actionBox({
+    required Color color,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 9),
+      height: 87,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 13)],
       ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              decoration:
+                  BoxDecoration(color: color.withOpacity(0.18), borderRadius: BorderRadius.circular(14)),
+              padding: const EdgeInsets.all(13),
+              child: Icon(icon, color: color, size: 28),
+            ),
+            const SizedBox(height: 7),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------
+  // TRANSACTION HISTORY
+  // ------------------------------------------------------------
+  Widget _transactionList() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F8FA),
+        borderRadius: BorderRadius.circular(23),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            username.isEmpty ? "Transaction History" : "$username's Transactions",
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 21),
+          ),
+          const SizedBox(height: 3),
+          const Text("A list of historical transactions",
+              style: TextStyle(color: Color(0xFF8D8EA2), fontSize: 13)),
+          const SizedBox(height: 14),
+
+          SizedBox(
+            height: 300,
+            child: ListView.builder(
+              itemCount: transactions.length,
+              itemBuilder: (context, index) {
+                final txn = transactions[index];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _txnItem(txn['name'], txn['method'], txn['amount'], txn['type']),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _txnItem(String name, String method, double amount, String type) {
+    final bool isSend = type == 'send';
+    final Color color = isSend ? Colors.red : Colors.green;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
       child: Row(
         children: [
           Container(
-            decoration: BoxDecoration(
-              color: isSend ? Colors.green.withOpacity(0.17) : Colors.red.withOpacity(0.16),
-              borderRadius: BorderRadius.circular(13),
-            ),
+            decoration:
+                BoxDecoration(color: color.withOpacity(0.18), borderRadius: BorderRadius.circular(13)),
             padding: const EdgeInsets.all(10),
-            child: Icon(
-              isSend ? Icons.arrow_upward : Icons.arrow_downward,
-              color: isSend ? Colors.green : Colors.red,
-              size: 22,
-            ),
+            child: Icon(isSend ? Icons.arrow_upward : Icons.arrow_downward,
+                color: color, size: 22),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    color: Color(0xFF232325),
-                  ),
-                ),
+                Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                 const SizedBox(height: 1),
-                Text(
-                  'Paid with: $method',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFFB2B5BF),
-                  ),
-                ),
+                Text('Paid with: $method',
+                    style: const TextStyle(fontSize: 13, color: Color(0xFFB2B5BF))),
               ],
             ),
           ),
           Text(
-            amount,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: isSend ? Colors.green : Colors.red,
-            ),
+            currencyFormatter.format(amount),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color),
           ),
         ],
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------
+  // IP EDIT DIALOG
+  // ------------------------------------------------------------
+
+  void _showEditIpDialog() {
+    final a = TextEditingController();
+    final b = TextEditingController();
+    final c = TextEditingController();
+    final d = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Enter IP Address"),
+        content: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _ipBox(a),
+            const Text('.'),
+            _ipBox(b),
+            const Text('.'),
+            _ipBox(c),
+            const Text('.'),
+            _ipBox(d),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              final ip = "${a.text}.${b.text}.${c.text}.${d.text}";
+
+              if (_validateIp(ip)) {
+                setState(() => connectedIp = ip);
+                Navigator.of(context).pop();
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Invalid IP"),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text("Save"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ipBox(TextEditingController c) {
+    return SizedBox(
+      width: 35,
+      child: TextField(
+        controller: c,
+        maxLength: 3,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(counterText: ''),
       ),
     );
   }

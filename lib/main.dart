@@ -10,7 +10,6 @@ final FlutterSecureStorage secureStorage = const FlutterSecureStorage();
 void main() {
   runApp(const DharPayApp());
 }
-
 class DharPayApp extends StatelessWidget {
   const DharPayApp({super.key});
 

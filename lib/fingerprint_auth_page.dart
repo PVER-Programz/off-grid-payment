@@ -22,54 +22,48 @@ class _FingerprintAuthPageState extends State<FingerprintAuthPage> {
   }
 
   Future<void> _authenticate() async {
-    bool canCheckBiometrics = false;
     try {
-      canCheckBiometrics = await auth.canCheckBiometrics;
-    } catch (e) {
-      setState(() {
-        _authStatus = 'Error checking biometrics: $e';
-      });
-      return;
-    }
+      bool supported = await auth.isDeviceSupported();
+      bool canCheck = await auth.canCheckBiometrics;
 
-    if (!canCheckBiometrics) {
-      setState(() {
-        _authStatus = 'Biometric authentication not available';
-      });
-      return;
-    }
+      if (!supported) {
+        setState(() => _authStatus = "Your device does not support biometrics");
+        return;
+      }
 
-    try {
+      if (!canCheck) {
+        setState(() => _authStatus = "No biometric sensors available");
+        return;
+      }
+
       setState(() {
         _isAuthenticating = true;
-        _authStatus = 'Authenticating...';
+        _authStatus = "Authenticating...";
       });
 
-      bool authenticated = await auth.authenticate(localizedReason: 'Please authenticate to continue');
+      bool authenticated = await auth.authenticate(
+        localizedReason: "Please authenticate to continue",
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+          useErrorDialogs: true,
+          sensitiveTransaction: true,      // ⭐ REQUIRED BY ANDROID 15
+        ),
+      );
 
-      setState(() {
-        _isAuthenticating = false;
-      });
+      setState(() => _isAuthenticating = false);
 
       if (authenticated) {
-        setState(() {
-          _authStatus = 'Authentication successful';
-        });
-
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (!mounted) return;
-
-        // Call the callback to notify parent/app to navigate accordingly
+        setState(() => _authStatus = "Authentication successful!");
+        await Future.delayed(const Duration(milliseconds: 300));
         widget.onAuthenticated();
       } else {
-        setState(() {
-          _authStatus = 'Authentication failed. Try again.';
-        });
+        setState(() => _authStatus = "Authentication failed. Tap retry.");
       }
     } catch (e) {
       setState(() {
         _isAuthenticating = false;
-        _authStatus = 'Error during authentication: $e';
+        _authStatus = "Error: $e";
       });
     }
   }
@@ -90,52 +84,38 @@ class _FingerprintAuthPageState extends State<FingerprintAuthPage> {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Container(
-                constraints: const BoxConstraints(maxWidth: 440),
+                padding: const EdgeInsets.all(32),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 40,
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 30,
                       offset: const Offset(0, 10),
                     ),
                   ],
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 32),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.fingerprint,
-                      size: 96,
-                      color: Color(0xFF667eea),
-                    ),
-                    const SizedBox(height: 32),
+                    const Icon(Icons.fingerprint, size: 100, color: Color(0xFF667eea)),
+                    const SizedBox(height: 20),
                     Text(
                       _authStatus,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        color: Color(0xFF1a1f36),
-                        fontWeight: FontWeight.w600,
-                      ),
                       textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                     ),
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 30),
                     if (!_isAuthenticating)
                       ElevatedButton(
                         onPressed: _authenticate,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF667eea),
-                          padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
                         ),
-                        child: const Text(
-                          'Retry',
-                          style: TextStyle(fontSize: 16, color: Colors.white),
-                        ),
+                        child: const Text("Retry", style: TextStyle(color: Colors.white, fontSize: 18)),
                       ),
                   ],
                 ),

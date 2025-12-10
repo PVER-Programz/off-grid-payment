@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'portfolio_page.dart';
 
 class ReceivePaymentPage extends StatefulWidget {
-  final String ipAddress; // from PortfolioPage connected IP
-  final String username;  // the logged-in username
+  final String ipAddress;
+  final String username;
 
-  const ReceivePaymentPage({super.key, required this.ipAddress, required this.username});
+  const ReceivePaymentPage({
+    super.key,
+    required this.ipAddress,
+    required this.username,
+  });
 
   @override
   State<ReceivePaymentPage> createState() => _ReceivePaymentPageState();
@@ -24,23 +27,28 @@ class _ReceivePaymentPageState extends State<ReceivePaymentPage> {
 
   Future<Map<String, dynamic>> fetchReceivedPayments() async {
     final url = Uri.parse("http://${widget.ipAddress}:5000/untransact");
+
     final response = await http.post(
       url,
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({'payee': widget.username}),
     );
+
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       if (data != null && data['processed'] != null) {
         return data['processed'];
       }
     }
+
     return {"total": 0, "records": []};
   }
 
   String formatDate(int timestamp) {
     final dt = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
-    return "${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year.toString().substring(2)}";
+    return "${dt.day.toString().padLeft(2, '0')}/"
+        "${dt.month.toString().padLeft(2, '0')}/"
+        "${dt.year.toString().substring(2)}";
   }
 
   @override
@@ -50,7 +58,7 @@ class _ReceivePaymentPageState extends State<ReceivePaymentPage> {
       body: SafeArea(
         child: Column(
           children: [
-            // Top bar
+            // HEADER
             Padding(
               padding: const EdgeInsets.only(top: 12, left: 18, right: 18),
               child: Row(
@@ -61,7 +69,7 @@ class _ReceivePaymentPageState extends State<ReceivePaymentPage> {
                   ),
                   const SizedBox(width: 4),
                   const Text(
-                    "Recieve Payment",
+                    "Receive Payment",
                     style: TextStyle(
                       fontSize: 23,
                       fontWeight: FontWeight.w700,
@@ -71,6 +79,8 @@ class _ReceivePaymentPageState extends State<ReceivePaymentPage> {
                 ],
               ),
             ),
+
+            // BODY
             Expanded(
               child: FutureBuilder<Map<String, dynamic>>(
                 future: _paymentsFuture,
@@ -78,11 +88,12 @@ class _ReceivePaymentPageState extends State<ReceivePaymentPage> {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
+
                   final payments = snapshot.data?['records'] ?? [];
                   final total = snapshot.data?['total'] ?? 0;
 
+                  // NO RECORDS
                   if (payments.isEmpty) {
-                    // no records found UI
                     return Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -102,22 +113,31 @@ class _ReceivePaymentPageState extends State<ReceivePaymentPage> {
                           ),
                           child: Column(
                             children: const [
-                              Icon(Icons.sentiment_dissatisfied, color: Colors.grey, size: 54),
+                              Icon(Icons.sentiment_dissatisfied,
+                                  color: Colors.grey, size: 54),
                               SizedBox(height: 16),
-                              Text("Sorry, No records Found",
-                                  style: TextStyle(fontSize: 18, color: Colors.black54)),
+                              Text(
+                                "Sorry, No records Found",
+                                style:
+                                    TextStyle(fontSize: 18, color: Colors.black54),
+                              ),
                             ],
                           ),
                         ),
                         const SizedBox(height: 28),
-                        Text("Server: ${widget.ipAddress}",
-                            style: const TextStyle(fontSize: 15, color: Colors.white)),
+                        Text(
+                          "Server: ${widget.ipAddress}",
+                          style:
+                              const TextStyle(fontSize: 15, color: Colors.white),
+                        ),
                       ],
                     );
                   }
 
+                  // RECORD LIST
                   return ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     children: [
                       Container(
                         margin: const EdgeInsets.symmetric(vertical: 20),
@@ -127,85 +147,118 @@ class _ReceivePaymentPageState extends State<ReceivePaymentPage> {
                           borderRadius: BorderRadius.circular(28),
                           boxShadow: [
                             BoxShadow(
-                                color: Colors.black.withOpacity(0.15),
-                                blurRadius: 17,
-                                offset: const Offset(0, 6))
+                              color: Colors.black.withOpacity(0.15),
+                              blurRadius: 17,
+                              offset: const Offset(0, 6),
+                            )
                           ],
                           border: Border.all(color: Colors.green, width: 2),
                         ),
                         child: Column(
                           children: [
-                            const Text("Received",
-                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                            const Text(
+                              "Received",
+                              style: TextStyle(
+                                  fontSize: 17, fontWeight: FontWeight.w600),
+                            ),
                             Text(
                               "₹$total",
                               style: const TextStyle(
-                                  fontSize: 33, color: Colors.green, fontWeight: FontWeight.bold),
+                                fontSize: 33,
+                                color: Colors.green,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             Text(
                               "from ${payments.length} payers",
-                              style: const TextStyle(fontSize: 15, color: Colors.black54),
+                              style: const TextStyle(
+                                  fontSize: 15, color: Colors.black54),
                             ),
                           ],
                         ),
                       ),
-                      Text("Server: ${widget.ipAddress}",
-                          style: const TextStyle(fontSize: 15, color: Colors.white),
-                          textAlign: TextAlign.center),
+
+                      Text(
+                        "Server: ${widget.ipAddress}",
+                        style: const TextStyle(fontSize: 15, color: Colors.white),
+                        textAlign: TextAlign.center,
+                      ),
+
                       const SizedBox(height: 16),
+
+                      // HEADER ROW
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.grey.shade400,
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 14),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 4, horizontal: 14),
                         child: const Row(
                           children: [
                             Expanded(
                                 child: Text("Date",
-                                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15))),
                             Expanded(
                                 child: Text("From",
-                                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15))),
                             Expanded(
                                 child: Text("Amount",
-                                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15))),
                           ],
                         ),
                       ),
+
+                      // LIST ITEMS
                       ...payments.map((item) {
                         return Container(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 14, horizontal: 14),
                           decoration: BoxDecoration(
                             border: Border(
-                              bottom: BorderSide(color: Colors.grey.shade300),
+                              bottom:
+                                  BorderSide(color: Colors.grey.shade300),
                             ),
                           ),
-                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
                           child: Row(
                             children: [
                               Expanded(
                                 child: Text(
                                   formatDate(item['transaction_time']),
-                                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                                  style: const TextStyle(
+                                      fontSize: 13, color: Colors.grey),
                                 ),
                               ),
                               Expanded(
-                                child: Text(item['from'],
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w600, fontSize: 15)),
+                                child: Text(
+                                  item['from'],
+                                  style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600),
+                                ),
                               ),
                               Expanded(
-                                child: Text("₹${item['amount']}",
-                                    textAlign: TextAlign.right,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 15,
-                                        color: Colors.green)),
+                                child: Text(
+                                  "₹${item['amount']}",
+                                  textAlign: TextAlign.right,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 15,
+                                    color: Colors.green,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
                         );
                       }).toList(),
+
                       const SizedBox(height: 24),
                     ],
                   );
